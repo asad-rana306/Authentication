@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  # ----------------------------------------
+  # 1. YOUR SPRING BOOT APP (IERS)
+  # ----------------------------------------
+  iers-backend:
+    build: .   # This tells Compose to look for the Dockerfile in the same folder
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres-db
+    env_file:
+      - .env   # Injects all your passwords and Google secrets
+    environment:
+      # Overrides the 'localhost' in your application.yml to use the Docker network
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-db:5432/IERS
+
+  # ----------------------------------------
+  # 2. THE POSTGRESQL DATABASE
+  # ----------------------------------------
+  postgres-db:
+    image: postgres:15
+    ports:
+      - "5432:5432"
+    environment:
+      # These variables create the database and user when it first boots up
+      - POSTGRES_USER=${POSTGRES_USERNAME}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=IERS
+    volumes:
+      - pgdata:/var/lib/postgresql/data # This saves your DB data so it isn't lost if the container stops
+
+volumes:
+  pgdata: # Declares the volume used above

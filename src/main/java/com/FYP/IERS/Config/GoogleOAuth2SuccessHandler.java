@@ -2,10 +2,10 @@ package com.FYP.IERS.Config;
 
 import com.FYP.IERS.DTO.AuthenticationDTO.AuthenticationResponse;
 import com.FYP.IERS.Service.AuthenticationService.AuthenticationService;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.user.OAuth2User;
@@ -20,11 +20,9 @@ import java.util.Map;
 public class GoogleOAuth2SuccessHandler implements AuthenticationSuccessHandler {
 
     private final AuthenticationService authenticationService;
-    private final ObjectMapper objectMapper;
 
-    public GoogleOAuth2SuccessHandler(AuthenticationService authenticationService, ObjectMapper objectMapper) {
+    public GoogleOAuth2SuccessHandler(@Lazy AuthenticationService authenticationService) {
         this.authenticationService = authenticationService;
-        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -43,11 +41,29 @@ public class GoogleOAuth2SuccessHandler implements AuthenticationSuccessHandler 
         response.setStatus(HttpServletResponse.SC_OK);
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        response.getWriter().write(objectMapper.writeValueAsString(authResponse));
+        response.getWriter().write(buildJson(authResponse));
     }
 
     private String stringValue(Object value) {
         return value == null ? null : value.toString();
+    }
+
+    private String buildJson(AuthenticationResponse response) {
+        return "{"
+                + "\"success\":" + response.isSuccess() + ","
+                + "\"message\":\"" + escape(response.getMessage()) + "\"," 
+                + "\"token\":\"" + escape(response.getToken()) + "\"," 
+                + "\"userId\":" + response.getUserId() + ","
+                + "\"userName\":\"" + escape(response.getUserName()) + "\"," 
+                + "\"timestamp\":" + response.getTimestamp()
+                + "}";
+    }
+
+    private String escape(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 }
 

@@ -1,4 +1,4 @@
-package com.FYP.IERS.Service;
+package com.FYP.IERS.Service.AuthenticationService;
 
 import com.FYP.IERS.Entity.User;
 import com.FYP.IERS.Repository.UserRepository;
@@ -8,7 +8,8 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 
-import java.util.Optional;
+import java.util.ArrayList;
+import java.util.List;
 
 @Service
 public class UserDetailServiceImpl implements UserDetailsService {
@@ -24,10 +25,15 @@ public class UserDetailServiceImpl implements UserDetailsService {
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
         User user = userRepository.findByUserName(username);
         if (user != null) {
+            String password = (user.getPassword() == null || user.getPassword().isBlank())
+                    ? "{noop}oauth2-user"
+                    : user.getPassword();
+
+            List<String> roles = user.getRoles() == null ? new ArrayList<>(List.of("USER")) : user.getRoles();
             return org.springframework.security.core.userdetails.User.builder()
                     .username(user.getUserName())
-                    .password(user.getPassword())
-                    .roles(user.getRoles().toArray(new String[0]))
+                    .password(password)
+                    .roles(roles.toArray(new String[0]))
                     .build();
         }
         throw new UsernameNotFoundException("User not found with username: " + username);

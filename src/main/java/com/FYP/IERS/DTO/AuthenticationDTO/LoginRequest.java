@@ -1,4 +1,4 @@
-package com.FYP.IERS.DTO;
+package com.FYP.IERS.DTO.AuthenticationDTO;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

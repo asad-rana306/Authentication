@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
@@ -18,6 +19,8 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import jakarta.servlet.http.HttpServletResponse;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 @Configuration
@@ -25,6 +28,12 @@ public class SpringSecurity {
 
     @Autowired
     private JwtFilter jwtFilter;
+
+    @Autowired
+    private GoogleOAuth2SuccessHandler googleOAuth2SuccessHandler;
+
+    @Autowired
+    private GoogleOAuth2FailureHandler googleOAuth2FailureHandler;
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -44,9 +53,11 @@ public class SpringSecurity {
                 // Allow all OPTIONS requests (Pre-flight CORS checks)
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-                // Public API Endpoints (No Token Required)
-                // FIXED: Replaced "" with "/api/auth/**" so the pattern starts with a slash
-                .requestMatchers("/api/auth/**").permitAll()
+                // Public authentication endpoints
+                .requestMatchers("/public/**").permitAll()
+
+                // OAuth2 login endpoints
+                .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
 
                 // Swagger Documentation (Public)
                 .requestMatchers(
@@ -55,17 +66,42 @@ public class SpringSecurity {
                         "/swagger-ui.html"
                 ).permitAll()
 
+                // Admin-only endpoints
+                .requestMatchers(HttpMethod.DELETE, "/admin/users/**").hasRole("ADMIN")
+
                 // ALL other requests require a valid JWT Token
                 .anyRequest().authenticated()
         );
 
-        // 4. Set Session Management to Stateless (Since we use JWT)
+        // 4. OAuth2 authorization flow needs temporary session state.
         http.sessionManagement(session ->
-                session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+                session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
         );
 
-        // 5. Add JWT Filter before standard authentication
+        // 5. Enable OAuth2 login with JSON success/failure responses.
+        http.oauth2Login(oauth2 -> oauth2
+                .successHandler(googleOAuth2SuccessHandler)
+                .failureHandler(googleOAuth2FailureHandler)
+        );
+
+        // 6. Add JWT Filter before standard authentication
         http.addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
+
+        // Return 401 for missing/invalid token and 403 only for true access-denied cases.
+        http.exceptionHandling(ex -> ex
+                .authenticationEntryPoint((request, response, authException) -> {
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                    response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+                    response.getWriter().write("{\"success\":false,\"message\":\"Unauthorized: missing or invalid token\"}");
+                })
+                .accessDeniedHandler((request, response, accessDeniedException) -> {
+                    response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                    response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+                    response.getWriter().write("{\"success\":false,\"message\":\"Forbidden: insufficient permissions\"}");
+                })
+        );
 
         return http.build();
     }
@@ -74,22 +110,16 @@ public class SpringSecurity {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
 
-        // Allowed Origins (Where requests can come from)
-        // FIXED: Removed the wildcard "*" because allowCredentials(true) forbids it
-        config.setAllowedOriginPatterns(List.of(
-                "http://localhost:5173",
-                "http://localhost:3000",
-                "http://127.0.0.1:5173",
-                "http://127.0.0.1:3000",
-                "https://your-frontend-domain.onrailway.app"
-        ));
-
-        // Allowed methods and headers
-        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        // Allow browser clients from any deployed frontend origin.
+        // Postman/mobile clients are unaffected by CORS, but this prevents browser-blocked calls in production.
+        config.setAllowedOriginPatterns(List.of("*"));
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
-        // Expose Authorization header so frontend can read it if needed
         config.setExposedHeaders(List.of("Authorization", "Content-Disposition"));
-        config.setAllowCredentials(true);
+
+        // JWT is sent in Authorization header, not cookies.
+        config.setAllowCredentials(false);
+        config.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);

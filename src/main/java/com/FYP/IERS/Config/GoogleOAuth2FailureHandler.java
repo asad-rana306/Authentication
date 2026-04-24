@@ -1,7 +1,6 @@
 package com.FYP.IERS.Config;
 
 import com.FYP.IERS.DTO.AuthenticationDTO.AuthenticationResponse;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -16,10 +15,7 @@ import java.nio.charset.StandardCharsets;
 @Component
 public class GoogleOAuth2FailureHandler implements AuthenticationFailureHandler {
 
-    private final ObjectMapper objectMapper;
-
-    public GoogleOAuth2FailureHandler(ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
+    public GoogleOAuth2FailureHandler() {
     }
 
     @Override
@@ -35,7 +31,22 @@ public class GoogleOAuth2FailureHandler implements AuthenticationFailureHandler 
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        response.getWriter().write(objectMapper.writeValueAsString(authResponse));
+        response.getWriter().write(buildJson(authResponse));
+    }
+
+    private String buildJson(AuthenticationResponse response) {
+        return "{"
+                + "\"success\":" + response.isSuccess() + ","
+                + "\"message\":\"" + escape(response.getMessage()) + "\"," 
+                + "\"timestamp\":" + response.getTimestamp()
+                + "}";
+    }
+
+    private String escape(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 }
 

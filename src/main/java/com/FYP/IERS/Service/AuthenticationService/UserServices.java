@@ -1,4 +1,4 @@
-package com.FYP.IERS.Service;
+package com.FYP.IERS.Service.AuthenticationService;
 
 import com.FYP.IERS.Entity.User;
 import com.FYP.IERS.Repository.UserRepository;
@@ -10,10 +10,16 @@ public class UserServices {
 
     @Autowired
     private UserRepository userRepository;
+
     public User addUser(User user) {
         if (userRepository.findByUserName(user.getUserName()) != null) {
             throw new RuntimeException("This ID is already taken, please choose another.");
         }
+
+        if (userRepository.findByEmail(user.getEmail()).isPresent()) {
+            throw new RuntimeException("This email is already registered. Please use another email.");
+        }
+
         return userRepository.save(user);
     }
 }

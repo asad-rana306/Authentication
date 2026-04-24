@@ -1,4 +1,4 @@
-package com.FYP.IERS.Service;
+package com.FYP.IERS.Service.AuthenticationService;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
@@ -17,13 +17,13 @@ public class EmailService {
         this.mailSender = mailSender;
     }
 
-    public void sendLoginOtp(String toEmail, String userName, String otpCode, int expiryMinutes) {
+    public void sendSignupOtp(String toEmail, String userName, String otpCode, int expiryMinutes) {
         SimpleMailMessage message = new SimpleMailMessage();
         message.setFrom(fromAddress);
         message.setTo(toEmail);
         message.setSubject("Your IERS login verification code");
         message.setText("Hello " + userName + ",\n\n"
-                + "Use this one-time verification code to complete your login:\n\n"
+                + "Use this one-time verification code to complete your Registration:\n\n"
                 + otpCode + "\n\n"
                 + "This code expires in " + expiryMinutes + " minutes and can only be used once.\n"
                 + "If you did not attempt to sign in, please change your password immediately.\n\n"
