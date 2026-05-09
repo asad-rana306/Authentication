@@ -1,35 +1,57 @@
 version: '3.8'
 
 services:
-  # ----------------------------------------
-  # 1. YOUR SPRING BOOT APP (IERS)
-  # ----------------------------------------
-  iers-backend:
-    build: .   # This tells Compose to look for the Dockerfile in the same folder
+  eureka-server:
+    build:
+      context: ../Eureka-Server
+      dockerfile: Dockerfile
+    image: ${DOCKERHUB_USERNAME:-local}/iers-eureka-server:${EUREKA_IMAGE_TAG:-latest}
+    container_name: eureka-server
     ports:
-      - "8080:8080"
-    depends_on:
-      - postgres-db
-    env_file:
-      - .env   # Injects all your passwords and Google secrets
+      - "8761:8761"
     environment:
-      # Overrides the 'localhost' in your application.yml to use the Docker network
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-db:5432/IERS
+      - SERVER_PORT=8761
+      - EUREKA_INSTANCE_HOSTNAME=eureka-server
+    networks:
+      - iers-net
 
-  # ----------------------------------------
-  # 2. THE POSTGRESQL DATABASE
-  # ----------------------------------------
   postgres-db:
     image: postgres:15
+    container_name: postgres-db
     ports:
       - "5432:5432"
     environment:
-      # These variables create the database and user when it first boots up
       - POSTGRES_USER=${POSTGRES_USERNAME}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=IERS
     volumes:
-      - pgdata:/var/lib/postgresql/data # This saves your DB data so it isn't lost if the container stops
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - iers-net
+
+  authentication-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${DOCKERHUB_USERNAME:-local}/iers-authentication:${AUTH_IMAGE_TAG:-latest}
+    container_name: authentication-service
+    ports:
+      - "8080:8080"
+    depends_on:
+      - eureka-server
+      - postgres-db
+    env_file:
+      - .env
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-db:5432/IERS
+      - EUREKA_SERVER_URL=http://eureka-server:8761/eureka/
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka/
+    networks:
+      - iers-net
 
 volumes:
-  pgdata: # Declares the volume used above
+  pgdata:
+
+networks:
+  iers-net:
+    driver: bridge
