@@ -2,11 +2,12 @@ package com.FYP.IERS.Config;
 
 import com.FYP.IERS.FIlter.JwtFilter;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.Ordered;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
-import org.springframework.security.config.Customizer;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -16,8 +17,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
-import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.web.filter.CorsFilter;
 
 import jakarta.servlet.http.HttpServletResponse;
 import java.nio.charset.StandardCharsets;
@@ -45,15 +46,15 @@ public class SpringSecurity {
         // 1. Disable CSRF (Safe for JWT/Stateless APIs)
         http.csrf(csrf -> csrf.disable());
 
-        // 2. Enable CORS
-        http.cors(Customizer.withDefaults());
+        // 2. Disable Security-level CORS (Our new global filter below handles it)
+        http.cors(cors -> cors.disable());
 
         // 3. Configure Route Permissions
         http.authorizeHttpRequests(auth -> auth
-                // Allow all OPTIONS requests (Pre-flight CORS checks)
+                // Allow all OPTIONS requests just in case
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-                // FIXED: Added /auth/public/** so your signup route is actually accessible
+                // Public authentication endpoints
                 .requestMatchers("/auth/public/**", "/public/**").permitAll()
 
                 // OAuth2 login endpoints
@@ -107,23 +108,25 @@ public class SpringSecurity {
     }
 
     @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
+    public FilterRegistrationBean<CorsFilter> customCorsFilter() {
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         CorsConfiguration config = new CorsConfiguration();
 
-        // Allow browser clients from any deployed frontend origin.
-        config.setAllowedOriginPatterns(List.of("*"));
-        config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(List.of("*"));
+        config.setAllowCredentials(true);
+        // addAllowedOriginPattern is safer than setAllowedOriginPatterns for this setup
+        config.addAllowedOriginPattern("*");
+        config.addAllowedHeader("*");
+        config.addAllowedMethod("*");
         config.setExposedHeaders(List.of("Authorization", "Content-Disposition"));
 
-        // FIXED: Changed to true. Many frontends (like Axios or Fetch) require this
-        // to be true when crossing origins, even if you are just passing headers.
-        config.setAllowCredentials(true);
-        config.setMaxAge(3600L);
-
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);
-        return source;
+
+        FilterRegistrationBean<CorsFilter> bean = new FilterRegistrationBean<>(new CorsFilter(source));
+
+        // This is the most important line. It puts CORS at the very front of the line!
+        bean.setOrder(Ordered.HIGHEST_PRECEDENCE);
+
+        return bean;
     }
 
     @Bean
