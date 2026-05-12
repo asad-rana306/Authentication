@@ -53,8 +53,8 @@ public class SpringSecurity {
                 // Allow all OPTIONS requests (Pre-flight CORS checks)
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-                // Public authentication endpoints
-                .requestMatchers("/public/**").permitAll()
+                // FIXED: Added /auth/public/** so your signup route is actually accessible
+                .requestMatchers("/auth/public/**", "/public/**").permitAll()
 
                 // OAuth2 login endpoints
                 .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
@@ -111,14 +111,14 @@ public class SpringSecurity {
         CorsConfiguration config = new CorsConfiguration();
 
         // Allow browser clients from any deployed frontend origin.
-        // Postman/mobile clients are unaffected by CORS, but this prevents browser-blocked calls in production.
         config.setAllowedOriginPatterns(List.of("*"));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setExposedHeaders(List.of("Authorization", "Content-Disposition"));
 
-        // JWT is sent in Authorization header, not cookies.
-        config.setAllowCredentials(false);
+        // FIXED: Changed to true. Many frontends (like Axios or Fetch) require this
+        // to be true when crossing origins, even if you are just passing headers.
+        config.setAllowCredentials(true);
         config.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
