@@ -23,6 +23,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping({"/public", "/auth/public"})
+@CrossOrigin
 public class PublicController {
     private static final Logger logger = LoggerFactory.getLogger(PublicController.class);
 
