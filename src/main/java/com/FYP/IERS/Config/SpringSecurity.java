@@ -16,13 +16,16 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.web.cors.CorsConfiguration;
-import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-import org.springframework.web.filter.CorsFilter;
 
+import jakarta.servlet.Filter;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.ServletRequest;
+import jakarta.servlet.ServletResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
 
 @Configuration
 public class SpringSecurity {
@@ -43,52 +46,37 @@ public class SpringSecurity {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        // 1. Disable CSRF (Safe for JWT/Stateless APIs)
+        // 1. Disable CSRF
         http.csrf(csrf -> csrf.disable());
 
-        // 2. Disable Security-level CORS (Our new global filter below handles it)
+        // 2. Disable Spring's default CORS entirely. Our raw filter will handle it.
         http.cors(cors -> cors.disable());
 
         // 3. Configure Route Permissions
         http.authorizeHttpRequests(auth -> auth
-                // Allow all OPTIONS requests just in case
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-
-                // Public authentication endpoints
                 .requestMatchers("/auth/public/**", "/public/**").permitAll()
-
-                // OAuth2 login endpoints
                 .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
-
-                // Swagger Documentation (Public)
-                .requestMatchers(
-                        "/swagger-ui/**",
-                        "/v3/api-docs/**",
-                        "/swagger-ui.html"
-                ).permitAll()
-
-                // Admin-only endpoints
+                .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/swagger-ui.html").permitAll()
                 .requestMatchers(HttpMethod.DELETE, "/admin/users/**").hasRole("ADMIN")
-
-                // ALL other requests require a valid JWT Token
                 .anyRequest().authenticated()
         );
 
-        // 4. OAuth2 authorization flow needs temporary session state.
+        // 4. Stateless Session
         http.sessionManagement(session ->
                 session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
         );
 
-        // 5. Enable OAuth2 login with JSON success/failure responses.
+        // 5. OAuth2
         http.oauth2Login(oauth2 -> oauth2
                 .successHandler(googleOAuth2SuccessHandler)
                 .failureHandler(googleOAuth2FailureHandler)
         );
 
-        // 6. Add JWT Filter before standard authentication
+        // 6. JWT Filter
         http.addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
 
-        // Return 401 for missing/invalid token and 403 only for true access-denied cases.
+        // 7. Exception Handling
         http.exceptionHandling(ex -> ex
                 .authenticationEntryPoint((request, response, authException) -> {
                     response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
@@ -107,25 +95,41 @@ public class SpringSecurity {
         return http.build();
     }
 
+    // ========================================================================
+    // THE NUCLEAR CORS FILTER
+    // Bypasses Spring Security entirely and manually writes headers to the TCP socket
+    // ========================================================================
     @Bean
-    public FilterRegistrationBean<CorsFilter> customCorsFilter() {
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        CorsConfiguration config = new CorsConfiguration();
+    public FilterRegistrationBean<Filter> rawCorsFilter() {
+        FilterRegistrationBean<Filter> bean = new FilterRegistrationBean<>();
+        
+        bean.setFilter(new Filter() {
+            @Override
+            public void doFilter(ServletRequest req, ServletResponse res, FilterChain chain) throws IOException, ServletException {
+                HttpServletRequest request = (HttpServletRequest) req;
+                HttpServletResponse response = (HttpServletResponse) res;
 
-        config.setAllowCredentials(true);
-        // addAllowedOriginPattern is safer than setAllowedOriginPatterns for this setup
-        config.addAllowedOriginPattern("*");
-        config.addAllowedHeader("*");
-        config.addAllowedMethod("*");
-        config.setExposedHeaders(List.of("Authorization", "Content-Disposition"));
+                // Dynamically grab the origin of the frontend (e.g., localhost:35995)
+                String origin = request.getHeader("Origin");
+                
+                response.setHeader("Access-Control-Allow-Origin", origin != null ? origin : "*");
+                response.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+                response.setHeader("Access-Control-Allow-Headers", "*");
+                response.setHeader("Access-Control-Allow-Credentials", "true");
+                response.setHeader("Access-Control-Max-Age", "3600");
 
-        source.registerCorsConfiguration("/**", config);
-
-        FilterRegistrationBean<CorsFilter> bean = new FilterRegistrationBean<>(new CorsFilter(source));
-
-        // This is the most important line. It puts CORS at the very front of the line!
+                // If it's a preflight request, return 200 OK immediately and STOP.
+                // Do not let Spring Security see this request.
+                if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+                    response.setStatus(HttpServletResponse.SC_OK);
+                } else {
+                    chain.doFilter(req, res);
+                }
+            }
+        });
+        
+        // Ensure this runs before absolutely everything else in the application
         bean.setOrder(Ordered.HIGHEST_PRECEDENCE);
-
         return bean;
     }
 
