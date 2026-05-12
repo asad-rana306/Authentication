@@ -1,6 +1,22 @@
 spring:
   application:
     name: IERS-Authentication-Service
+  cloud:
+    gateway:
+      globalcors:
+        allowedOrigins:
+         - "http://localhost:35995"
+         - "http://localhost:XXXXX"
+         - "http://your-production-origin"
+        allowedMethods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - OPTIONS
+        allowedHeaders:
+          - "*"
+        allowCredentials: true
 
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/IERS}

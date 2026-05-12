@@ -6,6 +6,8 @@ import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -112,24 +114,55 @@ public class SpringSecurity {
                 // Dynamically grab the origin of the frontend (e.g., localhost:35995)
                 String origin = request.getHeader("Origin");
                 
+                // Set CORS response headers. When credentials are allowed, echo the origin
                 response.setHeader("Access-Control-Allow-Origin", origin != null ? origin : "*");
+                response.setHeader("Vary", "Origin");
                 response.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
-                response.setHeader("Access-Control-Allow-Headers", "*");
+                // Echo requested headers so preflight succeeds for varying client headers (e.g. Authorization)
+                String reqHeaders = request.getHeader("Access-Control-Request-Headers");
+                response.setHeader("Access-Control-Allow-Headers", reqHeaders != null ? reqHeaders : "Authorization,Content-Type,Accept");
                 response.setHeader("Access-Control-Allow-Credentials", "true");
                 response.setHeader("Access-Control-Max-Age", "3600");
+                // Expose Authorization header if frontend needs to read it
+                response.setHeader("Access-Control-Expose-Headers", "Authorization");
 
                 // If it's a preflight request, return 200 OK immediately and STOP.
                 // Do not let Spring Security see this request.
                 if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
                     response.setStatus(HttpServletResponse.SC_OK);
-                } else {
-                    chain.doFilter(req, res);
+                    response.flushBuffer();
+                    return; // stop filter chain for preflight
                 }
+
+                chain.doFilter(req, res);
             }
         });
         
         // Ensure this runs before absolutely everything else in the application
         bean.setOrder(Ordered.HIGHEST_PRECEDENCE);
+        return bean;
+    }
+
+    // Debug logging filter to record incoming request path and CORS-related headers
+    @Bean
+    public FilterRegistrationBean<Filter> requestLoggingFilter() {
+        FilterRegistrationBean<Filter> bean = new FilterRegistrationBean<>();
+        bean.setFilter(new Filter() {
+            private final Logger logger = LoggerFactory.getLogger("RequestLogger");
+
+            @Override
+            public void doFilter(ServletRequest req, ServletResponse res, FilterChain chain) throws IOException, ServletException {
+                HttpServletRequest request = (HttpServletRequest) req;
+                String origin = request.getHeader("Origin");
+                String acrm = request.getHeader("Access-Control-Request-Method");
+                String acrh = request.getHeader("Access-Control-Request-Headers");
+                String path = request.getRequestURI();
+                logger.info("Incoming request: method={} uri={} Origin={} ACR-Method={} ACR-Headers={}",
+                        request.getMethod(), path, origin, acrm, acrh);
+                chain.doFilter(req, res);
+            }
+        });
+        bean.setOrder(Ordered.HIGHEST_PRECEDENCE + 1);
         return bean;
     }
 

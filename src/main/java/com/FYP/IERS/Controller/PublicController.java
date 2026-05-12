@@ -22,7 +22,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @RestController
-@RequestMapping("/public")
+@RequestMapping({"/public", "/auth/public"})
 public class PublicController {
     private static final Logger logger = LoggerFactory.getLogger(PublicController.class);
 
